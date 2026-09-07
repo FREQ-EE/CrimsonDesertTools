@@ -69,42 +69,55 @@ finally {
     Pop-Location
 }
 
-Step 'Detecting CMake and Visual Studio generator'
-$cmakeCmd = Get-Command cmake.exe -ErrorAction SilentlyContinue
-if (-not $cmakeCmd) { $cmakeCmd = Get-Command cmake -ErrorAction SilentlyContinue }
-if (-not $cmakeCmd) { Fail 'CMake is not available in PATH.' }
-$CMake = $cmakeCmd.Source
+Step 'Selecting the validated VS2022 bundled CMake toolchain'
+
+# Phase Two established that global CMake 4.4.3 + newer MSVC toolchains can produce duplicate-ImGui linker errors.
+# For Wardrobe runtime candidates we intentionally use the VS2022-bundled CMake/toolset that produced the known-good
+# baseline and matches the repository's successful windows-2022 CI environment. Do not silently fall back to VS2026.
+$vs2022Candidates = @(
+    'C:\Program Files\Microsoft Visual Studio\2022\Community',
+    'C:\Program Files\Microsoft Visual Studio\2022\Professional',
+    'C:\Program Files\Microsoft Visual Studio\2022\Enterprise',
+    'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools'
+)
+
+$VsRoot = $null
+$CMake = $null
+foreach ($candidate in $vs2022Candidates) {
+    $candidateCMake = Join-Path $candidate 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe'
+    if (Test-Path $candidateCMake) {
+        $VsRoot = $candidate
+        $CMake = $candidateCMake
+        break
+    }
+}
+
+if (-not $CMake) {
+    Fail 'Validated Visual Studio 2022 bundled CMake was not found. This test build deliberately will not fall back to global CMake 4.x / Visual Studio 2026.'
+}
 
 $versionLine = (& $CMake --version | Select-Object -First 1)
-if ($LASTEXITCODE -ne 0) { Fail 'cmake --version failed' }
+if ($LASTEXITCODE -ne 0) { Fail 'VS2022 bundled cmake --version failed' }
 if ($versionLine -notmatch 'cmake version ([0-9]+\.[0-9]+\.[0-9]+)') {
     Fail "Could not parse CMake version from '$versionLine'"
 }
 $cmakeVersion = [version]$Matches[1]
 if ($cmakeVersion -lt [version]'3.28.0') {
-    Fail "CMake 3.28+ is required; found $cmakeVersion"
+    Fail "VS2022 bundled CMake 3.28+ is required; found $cmakeVersion"
 }
 
-$cmakeHelp = (& $CMake --help | Out-String)
-if ($cmakeHelp -match 'Visual Studio 18 2026') {
-    $Generator = 'Visual Studio 18 2026'
-    $BuildDir = Join-Path $ProjectDir 'build\wardrobe-v2-test'
-}
-elseif ($cmakeHelp -match 'Visual Studio 17 2022') {
-    $Generator = 'Visual Studio 17 2022'
-    $BuildDir = Join-Path $ProjectDir 'build\wardrobe-v2-vs2022'
-}
-else {
-    Fail 'Neither the Visual Studio 2026 nor Visual Studio 2022 CMake generator is available.'
-}
+$Generator = 'Visual Studio 17 2022'
+$BuildDir = Join-Path $ProjectDir 'build\wardrobe-v2-vs2022'
 
+Write-Host 'Toolchain: validated VS2022 bundled CMake' -ForegroundColor Green
+Write-Host "VS root  : $VsRoot"
 Write-Host "CMake    : $CMake"
 Write-Host "Version  : $cmakeVersion"
 Write-Host "Generator: $Generator"
 Write-Host "Build dir: $BuildDir"
 
 Step 'Configuring Wardrobe v2'
-& $CMake -S $ProjectDir -B $BuildDir -G $Generator -A x64
+& $CMake -S $ProjectDir -B $BuildDir -G $Generator -A x64 -D "CMAKE_GENERATOR_INSTANCE=$VsRoot"
 if ($LASTEXITCODE -ne 0) { Fail "CMake configure failed with exit code $LASTEXITCODE" }
 
 Step 'Building Release ASI'
@@ -156,6 +169,7 @@ if (-not $SkipBackup) {
         "Commit=$Head",
         "Generator=$Generator",
         "CMake=$cmakeVersion",
+        "VSRoot=$VsRoot",
         "CandidateSHA256=$builtHash"
     )
 }
