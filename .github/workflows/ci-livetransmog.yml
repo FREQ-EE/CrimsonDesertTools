@@ -1,0 +1,57 @@
+name: CrimsonDesertLiveTransmog - CI
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - 'feature/**'
+      - 'freqee/wardrobe'
+  pull_request:
+    paths:
+      - 'CrimsonDesertLiveTransmog/**'
+      - 'CrimsonDesertCore/**'
+      - '.github/workflows/ci-livetransmog.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup MSVC x64
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Tool versions
+        shell: pwsh
+        run: |
+          cmake --version
+          cl 2>&1 | Select-Object -First 1
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S CrimsonDesertLiveTransmog -B CrimsonDesertLiveTransmog/build/ci -G 'Visual Studio 17 2022' -A x64
+
+      - name: Build Release
+        shell: pwsh
+        run: |
+          cmake --build CrimsonDesertLiveTransmog/build/ci --config Release --parallel
+
+      - name: Verify ASI
+        shell: pwsh
+        run: |
+          $asi = 'CrimsonDesertLiveTransmog/build/ci/CrimsonDesertLiveTransmog.asi'
+          if (-not (Test-Path $asi)) { throw "ASI not produced: $asi" }
+          $item = Get-Item $asi
+          $hash = (Get-FileHash -Algorithm SHA256 $asi).Hash
+          Write-Host "Built: $($item.FullName)"
+          Write-Host "Size: $($item.Length) bytes"
+          Write-Host "SHA-256: $hash"
