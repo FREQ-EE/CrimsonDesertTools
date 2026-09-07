@@ -21,6 +21,9 @@ __pycache__/
 # Personal files
 .claude
 
+# Local game runtime backups created by the Wardrobe build/deploy helper
+_runtime_backups/
+
 # Catalog page build artifacts (built into docs/live-transmog/ from docs/catalog-src/)
 docs/live-transmog/catalog.html
 docs/catalog-src/node_modules/
