@@ -10,7 +10,6 @@
 
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
@@ -18,6 +17,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_set>
+#include <vector>
 
 namespace Transmog::Wardrobe
 {
@@ -122,13 +122,10 @@ namespace Transmog::Wardrobe
 
         static std::filesystem::path runtime_path()
         {
-            HMODULE self = nullptr;
-            // FROM_ADDRESS intentionally treats the function address as a string pointer; Win32 documents this pattern.
-            GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                               reinterpret_cast<LPCWSTR>(&DiscoveryRegistry::instance), &self);
-
+            // The validated release installation lives next to CrimsonDesert.exe in bin64. Using the executable path
+            // avoids a non-portable function-pointer -> object-pointer cast merely to recover the ASI module handle.
             wchar_t buf[32768]{};
-            const DWORD n = self ? GetModuleFileNameW(self, buf, static_cast<DWORD>(std::size(buf))) : 0;
+            const DWORD n = GetModuleFileNameW(nullptr, buf, static_cast<DWORD>(std::size(buf)));
             if (n == 0 || n >= std::size(buf))
                 return std::filesystem::path("CrimsonDesertLiveTransmog_discovered.json");
 
@@ -195,8 +192,7 @@ namespace Transmog::Wardrobe
                 std::ofstream f(tmp, std::ios::trunc);
                 if (!f.is_open())
                 {
-                    DMK::Logger::get_instance().warning("[wardrobe-discovery] cannot write temporary registry '{}',",
-                                                        tmp);
+                    DMK::Logger::get_instance().warning("[wardrobe-discovery] cannot write temporary registry '{}'", tmp);
                     return;
                 }
                 f << root.dump(2) << '\n';
@@ -252,8 +248,8 @@ namespace Transmog::Wardrobe
         void seed_canonical_locked()
         {
             // Canonical acquired/encountered equipment from FREQ-EE/ludomancy CURRENT_STATE.md as of 2026-09-07.
-            // These are DISPLAY names only. They are resolved against the running catalog and then persisted by stable
-            // internal name, so the seed itself does not depend on patch-sensitive item ids.
+            // These are DISPLAY names only. Resolve at most ONE ordinary male/generic non-variant row per display name;
+            // this prevents a duplicate display label from accidentally seeding hidden NPC/body variants.
             static constexpr std::array<std::string_view, 34> kSeedDisplayNames = {
                 "Finely Crafted Gold Necklace",
                 "Worn Ring",
@@ -292,22 +288,32 @@ namespace Transmog::Wardrobe
             };
 
             std::unordered_set<std::string> wanted;
+            std::unordered_set<std::string> resolvedDisplay;
             wanted.reserve(kSeedDisplayNames.size());
+            resolvedDisplay.reserve(kSeedDisplayNames.size());
             for (const auto s : kSeedDisplayNames)
                 wanted.insert(lower(s));
 
             std::size_t resolved = 0;
+            using BK = ItemNameTable::BodyKind;
             for (const auto &e : ItemNameTable::instance().sorted_entries())
             {
-                if (e.displayName.empty())
+                if (e.displayName.empty() || e.hasVariantMeta || e.category == TransmogSlot::Count)
                     continue;
-                if (!wanted.contains(lower(e.displayName)))
+                if (!(e.bodyKind == BK::Generic || e.bodyKind == BK::Male || e.bodyKind == BK::Both))
                     continue;
+
+                const auto displayKey = lower(e.displayName);
+                if (!wanted.contains(displayKey) || resolvedDisplay.contains(displayKey))
+                    continue;
+
                 insert_name_locked(e.name);
+                resolvedDisplay.insert(displayKey);
                 ++resolved;
             }
 
-            DMK::Logger::get_instance().info("[wardrobe-discovery] canonical seed resolved {} catalog row(s)", resolved);
+            DMK::Logger::get_instance().info("[wardrobe-discovery] canonical seed resolved {} unique catalog row(s)",
+                                             resolved);
         }
 
         mutable std::mutex m_mutex;
