@@ -1,7 +1,8 @@
 # FREQEE Wardrobe Development Roadmap
 
-**Status:** planning / Phase Three not started
-**Branch:** `freqee/wardrobe`
+**Status:** Phase 3A implementation candidate complete; local compile/runtime validation pending  
+**Integration branch:** `freqee/wardrobe`  
+**Current feature branch:** `feature/wardrobe-foundation`  
 **Baseline:** upstream Live Transmog v0.15.0 at `6c9ccd18446aae08f60b8b6cc2a29e1fbd886b7f`
 
 This document defines the custom development path for FREQEE's spoiler-safe Crimson Desert wardrobe fork. It is intentionally separate from upstream release documentation.
@@ -9,98 +10,109 @@ This document defines the custom development path for FREQEE's spoiler-safe Crim
 ## Non-negotiable invariants
 
 - `main` remains a clean upstream-tracking branch.
-- Custom work branches from `freqee/wardrobe` and merges back into it.
+- Custom work branches from `freqee/wardrobe` and merges back into it only after build/runtime validation.
 - Normal play must never expose undiscovered item names, models, raw IDs or spoiler placeholders.
 - Existing upstream safety/body/slot filtering remains authoritative unless a specific bug is proven.
 - Stable transmog application logic should not be rewritten merely for UI style.
-- Every release candidate must retain a trivial rollback path to the previous known-good `.asi`.
-- Camera/pause reverse engineering must remain isolated from the core wardrobe/discovery logic.
+- Every release candidate retains a trivial rollback path to the previous known-good `.asi`.
+- Camera/pause reverse engineering remains isolated from core wardrobe/discovery logic.
 
-## Phase Three structure
+# Phase Three
 
-### 3A — Wardrobe foundation
+## 3A — Wardrobe foundation
 
-Low-risk/high-confidence work. Recommended as one cohesive branch, `feature/wardrobe-foundation`, with small reviewable commits.
+### Current implementation
 
-#### A1. Build/deploy helper
+Phase 3A has now been implemented as a candidate on `feature/wardrobe-foundation`. No claim of completion should be made until FREQEE compiles and runs the candidate in-game.
 
-Codify the known-good local build environment:
-- VS 2022 Community installation: `C:\Program Files\Microsoft Visual Studio\2022\Community`
-- explicit CMake generator instance: `C:\Program Files\Microsoft Visual Studio\2022\Community,version=17.11.35327.3`
-- preferred CMake: VS-bundled `3.29.5-msvc4`
-- do not use global CMake 4.4.3 for this target unless the ImGui duplicate-link issue is re-tested/fixed.
+Implemented candidate features:
 
-Current known-good binary from untouched baseline:
-- size: 3,682,304 bytes
-- SHA-256: `887F63291637540FAA1BA2984AC176C2101BED3C8D3BC1056AF6EBFFCC97DB21`
+1. **Validated build/deploy helper**
+   - `scripts/freqee_build_deploy.ps1` codifies the known-good VS2022-bundled CMake 3.29.5 path;
+   - refuses deployment while Crimson Desert is running;
+   - Release build + SHA-256 verification;
+   - backs up the currently deployed ASI before replacement;
+   - deploys only `CrimsonDesertLiveTransmog.asi`.
 
-Add tooling only if it reduces error-prone manual steps; do not hard-code a user's game path into product logic.
+2. **Persistent discovered-appearance registry**
+   - `src/wardrobe_discovery.hpp` persists stable internal item names in `CrimsonDesertLiveTransmog_discovered.json`;
+   - normal catalogue filters through this registry after the upstream slot/body/safety rules;
+   - malformed/missing registry fails closed rather than exposing the full catalogue;
+   - canonical 2026-09-07 acquired gear is seeded by display-name resolution, with duplicate/variant/body guards;
+   - existing staged/applied transmog item mappings are also learned;
+   - user picks are persisted immediately by stable internal name.
 
-#### A2. Persisted discovered-appearance registry
+3. **Inventory-inspired Wardrobe UI**
+   - old developer panel replaced on the feature branch by a left / transparent-centre / right wardrobe layout;
+   - left: character editing selector, body-filter affordance, equipment-slot selector, Outfits;
+   - centre: intentionally unobstructed live character viewport, reserved for Phase 3C camera work;
+   - right: Appearance / Colour tabs, discovered catalogue, search, filters and contextual actions;
+   - standalone root uses no opaque fullscreen background.
 
-Add a dedicated registry persisted outside the full catalogue, for example a small JSON file next to the mod configuration.
+4. **Transactional wardrobe semantics**
+   - no user-facing `Instant Apply` mode;
+   - Applied state = wardrobe-open persisted baseline;
+   - Draft = clicked/pinned state;
+   - Hover preview = temporary single-slot apply after ~150 ms dwell;
+   - leaving hover returns to the pinned draft;
+   - Apply is the persistence boundary via `PresetManager::replace_current_from_state()`;
+   - Cancel restores wardrobe-open preset + mappings;
+   - `Equipped` (no override) and `Hidden` (active + itemId 0) are separate choices.
 
-Required behaviour:
-- normal picker flow: full catalogue → existing slot/safety/body/variant filters → discovered registry → visible rows;
-- undiscovered rows are not rendered at all;
-- no greyed-out unknowns, `????`, raw IDs, or model previews;
-- discovered status survives restart and remains after items are sold/stored;
-- malformed/missing registry files fail safely and do not expose the full catalogue;
-- a deliberately buried developer/debug override may show the full catalogue, but must be OFF by default and clearly labelled.
+5. **Spoiler control**
+   - default control is `Catalogue: Discovered`;
+   - unrestricted catalogue requires an explicit spoiler confirmation;
+   - unrestricted mode is session-only;
+   - raw/internal IDs remain hidden in normal mode.
 
-The initial registry seed must come only from the latest canonical live save record in `FREQ-EE/ludomancy/crimson-desert/`. Never seed appearances merely because an external database says they exist.
+6. **Outfit UX**
+   - existing PresetManager remains the sole persistence system;
+   - list/select, save current as new, rename, duplicate, delete;
+   - selecting another Outfit changes the draft context;
+   - Cancel restores the Outfit active when Wardrobe opened;
+   - Apply persists the currently selected/current draft.
 
-#### A3. Wardrobe UI architecture / re-theme
+7. **Integrated colour entry point**
+   - `Colour` is a first-class right-panel tab;
+   - normal dye remains upstream `DyeRecordInject` / ARMOR_MOD state;
+   - Extended material colour remains upstream ColorOverride;
+   - no parallel colour engine was added;
+   - startup-gated `[Experimental] ColorOverride=true` behaviour is preserved.
 
-Replace the developer-tool presentation with a coherent wardrobe structure while retaining the same underlying transmog mechanisms.
+8. **Xbox/controller foundation**
+   - dynamic XInput polling avoids a new static link dependency;
+   - Y: Appearance/Colour;
+   - View/Back: catalogue/outfit navigation context;
+   - LB/RB: slots or outfits;
+   - D-pad navigation state;
+   - X: Apply;
+   - B: Cancel + close;
+   - A selects Outfits;
+   - catalogue A-selection is intentionally left as a diagnostic probe until the first runtime navigation test establishes the correct filtered-list activation path.
 
-Recommended high-level layout:
-- equipment-slot selector;
-- character viewport / inspection area;
-- tabs: **Appearance / Colour / Outfits**;
-- explicit Apply / Cancel behaviour;
-- current appearance vs preview state;
-- unsaved-change indicator;
-- clear controller focus/navigation state.
+9. **Diagnostics**
+   - `[wardrobe-discovery]`, `[wardrobe]`, `[wardrobe-ui]`, `[wardrobe-input]` and `[wardrobe-diag]` log families added;
+   - Diagnostics button emits a compact state/layout line for runtime handoff.
 
-Do not make the UI dependent on ReShade. Standalone overlay remains first-class.
+### Runtime validation document
 
-#### A4. Integrated colour controls
+See `docs/PHASE3A_RUNTIME_TEST.md` for the exact compile/deploy/smoke-test procedure and artefacts to return.
 
-Promote the existing colour/dye functionality into the normal wardrobe workflow rather than creating a second independent colour system.
+### Still inside the 3A validation loop
 
-Recommended user-facing modes:
-- **Normal:** game-compatible/vanilla-like dye restrictions where practical;
-- **Extended:** opt-in arbitrary per-material overrides supported by the existing mod.
+These are not promoted to 3B/3C; they simply require a live build or runtime observation before finalising 3A:
 
-Keep the underlying colour modules modular so the experimental renderer/material work remains isolated from ordinary transmog state.
+- compiler/linker verification of the new ImGui surface against the ReShade function-table wrapper;
+- catalogue A-button activation for controller navigation;
+- immediate Cancel callback on the legacy Home/Escape standalone-overlay close path;
+- 5120×1440 GDI dirty-rectangle performance with left + right panels;
+- final visual fit of the existing normal/Extended dye popup inside the new right panel.
 
-#### A5. Outfit/preset UX
+If the first build fails, fix compile issues on this feature branch before changing behaviour. If it builds but a runtime item above fails, use the diagnostic log rather than speculative reverse engineering.
 
-Reuse existing preset infrastructure but present it as wardrobe outfits:
-- save current appearance as outfit;
-- clone/rename/apply;
-- clear indication of active vs modified state;
-- no regression to existing per-character persistence.
+## 3B — Automatic discovery
 
-#### A6. Xbox/controller navigation foundation
-
-Use the existing input/overlay abstraction where possible.
-
-Target:
-- open/close wardrobe;
-- change equipment slot;
-- navigate appearance list;
-- change colour controls;
-- manage outfits/presets;
-- Apply / Cancel;
-- later share the same navigation scheme with camera inspection controls.
-
-Preferred opening method is a controller chord if stable. Mapping keyboard Home to an Xbox Elite rear control remains an acceptable fallback if native opening adds disproportionate risk.
-
-### 3B — Automatic discovery
-
-Moderate runtime-integration risk. Do only after 3A is stable.
+Do only after 3A is stable.
 
 Objectives:
 - observe inventory/equipment acquisition safely;
@@ -111,7 +123,7 @@ Objectives:
 
 Optional later rule: merchant preview may count as discovery, but this is separate from owned/acquired discovery and should not be enabled implicitly.
 
-### 3C — Inspection mode
+## 3C — Inspection mode
 
 Higher reverse-engineering risk and deliberately isolated from core wardrobe logic.
 
@@ -119,9 +131,11 @@ Objectives:
 - camera orbit/rotation;
 - zoom;
 - slot-specific framing;
-- full-body framing for outfits;
+- smooth framing transitions;
+- full-body framing for Outfits;
 - controller camera controls;
-- preferably manipulate the camera rather than rotating the player actor.
+- preferably manipulate the camera rather than rotating the player actor;
+- inactive-character 3D preview only if the engine exposes a safe path.
 
 Suggested framing targets:
 - helm: head / upper torso;
@@ -138,41 +152,39 @@ Pause strategy priority:
 
 Do not suspend arbitrary game threads as the default approach.
 
-### 3D — Polish / optional extensions
+## 3D — Polish / optional extensions
 
 Only after 3A–3C are stable:
-- thumbnails if technically practical;
+- actual game item thumbnails if a safe texture-resource path is identified;
 - favourites;
-- richer sorting/search;
+- richer sorting/search/recent-discovery indicators;
 - localisation/display-name improvements;
 - merchant-preview discovery if wanted;
-- optional ReShade-hosted presentation only if it offers a concrete advantage;
+- optional ReShade-hosted presentation only if it provides a concrete advantage;
 - upstream-sync tooling/conflict checks.
 
-## Branch / commit recommendation
+## Branch / merge discipline
 
-When implementation begins:
+Current path:
 
-1. create `feature/wardrobe-foundation` from `freqee/wardrobe`;
-2. keep A1–A6 as separate logical commits even if developed in one round;
-3. first behaviour-changing commit: discovered registry + picker filter;
-4. build after every logical commit;
-5. perform runtime smoke tests before merging back to `freqee/wardrobe`;
-6. keep camera/pause work on a later separate branch.
+1. `feature/wardrobe-foundation` from `freqee/wardrobe` — DONE;
+2. Phase 3A implementation commits — candidate exists;
+3. local compile with known-good toolchain — NEXT;
+4. runtime smoke test + return log/discovery JSON/screenshot — NEXT;
+5. fix candidate in small commits;
+6. only after validation, merge `feature/wardrobe-foundation` into `freqee/wardrobe`;
+7. automatic discovery and camera/pause remain later branches.
 
 ## Phase Two build baseline
 
-Phase Two proved a complete untouched source → build → install → runtime path before custom development.
-
-Known-good commands:
+Known-good commands remain:
 
 ```powershell
 $cmake = "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
 $vsInstance = "C:\Program Files\Microsoft Visual Studio\2022\Community,version=17.11.35327.3"
 
-cmake --version
 & $cmake --preset msvc-release -D "CMAKE_GENERATOR_INSTANCE=$vsInstance"
 & $cmake --build "build\release-msvc" --config Release --parallel
 ```
 
-Global CMake 4.4.3 configured successfully but failed during final Release link with duplicate ImGui symbols. VS-bundled CMake 3.29.5-msvc4 built the exact same untouched source successfully. Treat this as a project-tooling compatibility constraint until deliberately revisited.
+Global CMake 4.4.3 configured successfully but failed during final Release link with duplicate ImGui symbols. VS-bundled CMake 3.29.5-msvc4 built the exact untouched baseline successfully. Treat that as a project-tooling compatibility constraint until deliberately revisited.
