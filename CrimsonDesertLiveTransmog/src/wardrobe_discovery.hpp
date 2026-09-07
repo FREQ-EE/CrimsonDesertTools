@@ -247,10 +247,11 @@ namespace Transmog::Wardrobe
 
         void seed_canonical_locked()
         {
-            // Canonical acquired/encountered equipment from FREQ-EE/ludomancy CURRENT_STATE.md as of 2026-09-07.
+            // Canonical acquired/encountered equipment from FREQ-EE/ludomancy CURRENT_STATE.md plus confirmed
+            // pre-snapshot play history recovered from the user's own project conversations as of 2026-09-07.
             // These are DISPLAY names only. Resolve at most ONE ordinary male/generic non-variant row per display name;
             // this prevents a duplicate display label from accidentally seeding hidden NPC/body variants.
-            static constexpr std::array<std::string_view, 34> kSeedDisplayNames = {
+            static constexpr std::array<std::string_view, 49> kSeedDisplayNames = {
                 "Finely Crafted Gold Necklace",
                 "Worn Ring",
                 "Tarnished Ring",
@@ -285,6 +286,22 @@ namespace Transmog::Wardrobe
                 "Criminal Mask",
                 "Criminal-behaviour Mask",
                 "Criminal Behaviour Mask",
+                // Confirmed historical gear from 2026-08-28, before the wardrobe registry existed.
+                "Enithium Leather Cloak",
+                "Enithium Leather Armour",
+                "Enithium Leather Armor",
+                "Enithium Leather Gloves",
+                "Enithium Leather Boots",
+                "Gray Wolf Wooden Shield",
+                "Grey Wolf Wooden Shield",
+                "Gray Wolf Sword",
+                "Grey Wolf Sword",
+                "Becker Axe",
+                "Becker Dagger",
+                "Becker Shield",
+                "Sword of the Wolf",
+                "Warspike Spear",
+                "Herbalist's Pack",
             };
 
             std::unordered_set<std::string> wanted;
