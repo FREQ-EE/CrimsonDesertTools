@@ -162,6 +162,14 @@ target_include_directories(overlay_ui_obj PRIVATE
     src
     external/reshade-sdk/include
 )
+
+# ReShade's SDK implements its ImGui forwarding layer as inline functions in namespace ImGui.
+# MSVC 19.50 / Visual Studio 2026 now diagnoses those thunk COMDATs as multiply-defined when the
+# same binary also links the real standalone ImGui implementation. Put only the SDK-facing UI TUs
+# in a private namespace at preprocessing time. Their calls still go through the ReShade function
+# table; the standalone implementation remains in the real ImGui namespace and supplies that table.
+target_compile_definitions(overlay_ui_obj PRIVATE ImGui=ReShadeImGui)
+
 target_link_libraries(overlay_ui_obj PRIVATE
     DetourModKit
     CrimsonDesertCore::core
