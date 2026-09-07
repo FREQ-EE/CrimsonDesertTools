@@ -12,6 +12,7 @@
 #define TRANSMOG_OVERLAY_UI_HELPERS_HPP
 
 #include "shared_state.hpp"
+#include "transmog_map.hpp"
 
 #include <array>
 #include <cstddef>
