@@ -69,31 +69,19 @@ finally {
     Pop-Location
 }
 
-Step 'Selecting the validated VS2022 bundled CMake toolchain'
+Step 'Selecting exact Phase Two validated VS2022 toolchain'
 
-# Phase Two established that global CMake 4.4.3 + newer MSVC toolchains can produce duplicate-ImGui linker errors.
-# For Wardrobe runtime candidates we intentionally use the VS2022-bundled CMake/toolset that produced the known-good
-# baseline and matches the repository's successful windows-2022 CI environment. Do not silently fall back to VS2026.
-$vs2022Candidates = @(
-    'C:\Program Files\Microsoft Visual Studio\2022\Community',
-    'C:\Program Files\Microsoft Visual Studio\2022\Professional',
-    'C:\Program Files\Microsoft Visual Studio\2022\Enterprise',
-    'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools'
-)
+# Phase Two already proved the exact local recipe below on this machine.
+# VS2022 is physically present but is not registered with the current Visual Studio Installer/vswhere,
+# so CMake requires BOTH the path and an explicit version field in CMAKE_GENERATOR_INSTANCE.
+$VsRoot = 'C:\Program Files\Microsoft Visual Studio\2022\Community'
+$VsVersion = '17.11.35327.3'
+$VsInstance = "$VsRoot,version=$VsVersion"
+$CMake = Join-Path $VsRoot 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe'
+$BuildDir = Join-Path $ProjectDir 'build\release-msvc'
 
-$VsRoot = $null
-$CMake = $null
-foreach ($candidate in $vs2022Candidates) {
-    $candidateCMake = Join-Path $candidate 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe'
-    if (Test-Path $candidateCMake) {
-        $VsRoot = $candidate
-        $CMake = $candidateCMake
-        break
-    }
-}
-
-if (-not $CMake) {
-    Fail 'Validated Visual Studio 2022 bundled CMake was not found. This test build deliberately will not fall back to global CMake 4.x / Visual Studio 2026.'
+if (-not (Test-Path $CMake)) {
+    Fail "Validated VS2022 bundled CMake not found at: $CMake"
 }
 
 $versionLine = (& $CMake --version | Select-Object -First 1)
@@ -106,31 +94,33 @@ if ($cmakeVersion -lt [version]'3.28.0') {
     Fail "VS2022 bundled CMake 3.28+ is required; found $cmakeVersion"
 }
 
-$Generator = 'Visual Studio 17 2022'
-$BuildDir = Join-Path $ProjectDir 'build\wardrobe-v2-vs2022'
+Write-Host 'Toolchain : exact Phase Two validated recipe' -ForegroundColor Green
+Write-Host "VS root   : $VsRoot"
+Write-Host "VS version: $VsVersion"
+Write-Host "Instance  : $VsInstance"
+Write-Host "CMake     : $CMake"
+Write-Host "Version   : $cmakeVersion"
+Write-Host 'Preset    : msvc-release'
+Write-Host "Build dir : $BuildDir"
 
-Write-Host 'Toolchain: validated VS2022 bundled CMake' -ForegroundColor Green
-Write-Host "VS root  : $VsRoot"
-Write-Host "CMake    : $CMake"
-Write-Host "Version  : $cmakeVersion"
-Write-Host "Generator: $Generator"
-Write-Host "Build dir: $BuildDir"
-
-# CMAKE_GENERATOR_INSTANCE is deliberately not supplied. The VS17 generator already restricts selection to
-# Visual Studio 2022 and is more reliable when CMake resolves the registered installation itself. A previous
-# explicit path override can also be cached after a failed configure, so always start this runtime test clean.
+Step 'Clearing stale Phase Two build directory'
 if (Test-Path $BuildDir) {
-    Step 'Clearing stale VS2022 build directory'
     Remove-Item -LiteralPath $BuildDir -Recurse -Force
 }
 
-Step 'Configuring Wardrobe v2'
-& $CMake -S $ProjectDir -B $BuildDir -G $Generator -A x64
-if ($LASTEXITCODE -ne 0) { Fail "CMake configure failed with exit code $LASTEXITCODE" }
+Step 'Configuring Wardrobe v2 with known-good preset'
+Push-Location $ProjectDir
+try {
+    & $CMake --preset msvc-release -D "CMAKE_GENERATOR_INSTANCE=$VsInstance"
+    if ($LASTEXITCODE -ne 0) { Fail "CMake configure failed with exit code $LASTEXITCODE" }
 
-Step 'Building Release ASI'
-& $CMake --build $BuildDir --config Release --parallel
-if ($LASTEXITCODE -ne 0) { Fail "CMake build failed with exit code $LASTEXITCODE" }
+    Step 'Building Release ASI'
+    & $CMake --build 'build\release-msvc' --config Release --parallel
+    if ($LASTEXITCODE -ne 0) { Fail "CMake build failed with exit code $LASTEXITCODE" }
+}
+finally {
+    Pop-Location
+}
 
 $BuiltAsi = Join-Path $BuildDir 'CrimsonDesertLiveTransmog.asi'
 if (-not (Test-Path $BuiltAsi)) { Fail "Build reported success but ASI is missing: $BuiltAsi" }
@@ -175,9 +165,11 @@ if (-not $SkipBackup) {
     Set-Content -LiteralPath (Join-Path $backupDir 'BUILD.txt') -Encoding UTF8 -Value @(
         "Branch=$Branch",
         "Commit=$Head",
-        "Generator=$Generator",
+        "Preset=msvc-release",
         "CMake=$cmakeVersion",
         "VSRoot=$VsRoot",
+        "VSVersion=$VsVersion",
+        "VSInstance=$VsInstance",
         "CandidateSHA256=$builtHash"
     )
 }
