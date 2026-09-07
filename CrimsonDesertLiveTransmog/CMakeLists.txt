@@ -135,19 +135,22 @@ set(COMMON_INCLUDE_DIRS
 
 # Overlay UI + lifecycle TU group.
 #
-# overlay.cpp (lifecycle glue) and overlay_ui.cpp (the entire widget body)
+# overlay.cpp (lifecycle glue) and wardrobe_overlay_v2.cpp (the active Wardrobe v2 widget body)
 # both compile against the ReShade SDK's <imgui.h> + <reshade_overlay.hpp>,
 # so every ImGui:: call routes through imgui_function_table_instance().
 # That pointer is set by ReShade when our addon registers, or by our
 # populator (src/imgui_function_table_populator.cpp -- compiled in the
 # main target against imgui_lib) when running standalone.
 #
-# This OBJECT lib gets ONLY the ReShade SDK include path.  Adding
+# The legacy src/overlay_ui.cpp remains in the repository for comparison/history but is intentionally NOT compiled.
+# Compiling both would duplicate draw_overlay / ReShade lifecycle symbols.
+#
+# This OBJECT lib gets ONLY the ReShade SDK include path. Adding
 # imgui_lib's include path here would let the real, non-thunk ImGui::
 # symbols leak in and produce LNK2005.
 add_library(overlay_ui_obj OBJECT
     src/overlay.cpp
-    src/overlay_ui.cpp
+    src/wardrobe_overlay_v2.cpp
     src/overlay_ui/color_override.cpp
     src/overlay_ui/dye_popup.cpp
     src/overlay_ui/footer.cpp
