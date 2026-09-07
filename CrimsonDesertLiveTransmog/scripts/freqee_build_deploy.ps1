@@ -116,8 +116,16 @@ Write-Host "Version  : $cmakeVersion"
 Write-Host "Generator: $Generator"
 Write-Host "Build dir: $BuildDir"
 
+# CMAKE_GENERATOR_INSTANCE is deliberately not supplied. The VS17 generator already restricts selection to
+# Visual Studio 2022 and is more reliable when CMake resolves the registered installation itself. A previous
+# explicit path override can also be cached after a failed configure, so always start this runtime test clean.
+if (Test-Path $BuildDir) {
+    Step 'Clearing stale VS2022 build directory'
+    Remove-Item -LiteralPath $BuildDir -Recurse -Force
+}
+
 Step 'Configuring Wardrobe v2'
-& $CMake -S $ProjectDir -B $BuildDir -G $Generator -A x64 -D "CMAKE_GENERATOR_INSTANCE=$VsRoot"
+& $CMake -S $ProjectDir -B $BuildDir -G $Generator -A x64
 if ($LASTEXITCODE -ne 0) { Fail "CMake configure failed with exit code $LASTEXITCODE" }
 
 Step 'Building Release ASI'
