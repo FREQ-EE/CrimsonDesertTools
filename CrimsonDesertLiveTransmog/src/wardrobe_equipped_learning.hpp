@@ -7,9 +7,11 @@
 
 #include <Windows.h>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string_view>
 #include <unordered_set>
 
 namespace Transmog::Wardrobe
@@ -47,6 +49,16 @@ namespace Transmog::Wardrobe
         registry.ensure_ready();
         if (!registry.ready())
             return;
+
+        // Two verified owned armor rows were absent from v2 only because the canonical project record uses British
+        // "Armour" while the game's display-name table spells them "Armor". Their stable internal ids come directly
+        // from the shipped display-name TSV, so backfilling them does not reveal any unencountered equipment.
+        static constexpr std::array<std::string_view, 2> kVerifiedStableBackfill = {
+            "Doventry_Leather_Armor",
+            "Douglas_Leather_Armor", // Blackwing Leather Armor
+        };
+        for (const auto name : kVerifiedStableBackfill)
+            registry.mark_discovered(name, "verified play-history backfill");
 
         const auto a1 = static_cast<std::uintptr_t>(player_a1().load(std::memory_order_acquire));
         if (a1 < 0x10000ULL)
